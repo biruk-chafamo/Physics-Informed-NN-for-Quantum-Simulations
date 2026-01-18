@@ -307,7 +307,7 @@ def main():
         print(f"Output saved to: {output_dir}")
         print()
         print("To run inference:")
-        print(f"  python infer.py --run-id {run_id} --plot")
+        print(f"  python infer.py --run-id {run_id}")
         print("=" * 60)
 
 
