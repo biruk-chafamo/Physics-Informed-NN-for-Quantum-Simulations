@@ -3,25 +3,27 @@
 Command-line interface for training the PINN Schrödinger solver.
 
 Usage:
-    python train.py                              # Use default config
+    python train.py                              # Use default config, auto-saves to runs/
     python train.py --config configs/custom.yaml # Use custom config
     python train.py --epochs 5000 --lr 0.0001    # Override specific params
     python train.py --potential harmonic         # Use different potential
+    python train.py --run-name my_experiment     # Custom run name
+    python train.py --tags baseline gpu          # Add tags for categorization
 """
 
 import argparse
 import logging
-import os
 from pathlib import Path
 
 import torch
 import matplotlib.pyplot as plt
 
-from pinn_schrodinger.config import Config, load_config, DomainConfig, ModelConfig, TrainingConfig, PotentialConfig, InitialConditionConfig
+from pinn_schrodinger.config import Config, load_config
 from pinn_schrodinger.model import SchrodingerPINN
 from pinn_schrodinger.potentials import create_potential_from_config
 from pinn_schrodinger.physics import create_grid, create_initial_condition
 from pinn_schrodinger.trainer import SchrodingerTrainer
+from pinn_schrodinger.run_manager import RunManager
 from pinn_schrodinger.visualization import (
     plot_initial_condition,
     plot_probability_density,
@@ -69,7 +71,6 @@ def parse_args():
     # Training parameters
     parser.add_argument('--epochs', '-e', type=int, help='Number of training epochs')
     parser.add_argument('--lr', type=float, help='Learning rate')
-    parser.add_argument('--log-every', type=int, help='Logging frequency (epochs)')
 
     # Potential parameters
     parser.add_argument(
@@ -82,17 +83,19 @@ def parse_args():
     parser.add_argument('--potential-center', type=float, help='Potential center')
     parser.add_argument('--potential-sigma', type=float, help='Potential width (Gaussian)')
 
-    # Output
+    # Run management
     parser.add_argument(
-        '--output-dir', '-o',
+        '--run-name',
         type=str,
-        default='output',
-        help='Directory for output files'
+        default=None,
+        help='Custom run name (auto-generated from timestamp and config if omitted)'
     )
     parser.add_argument(
-        '--save-model',
-        action='store_true',
-        help='Save trained model to output directory'
+        '--tags',
+        type=str,
+        nargs='*',
+        default=None,
+        help='Tags for categorizing the run (e.g., --tags baseline gpu)'
     )
     parser.add_argument(
         '--no-plots',
@@ -103,18 +106,6 @@ def parse_args():
         '--animate',
         action='store_true',
         help='Create animated GIF of wave function evolution'
-    )
-    parser.add_argument(
-        '--animation-frames',
-        type=int,
-        default=100,
-        help='Number of frames in animation'
-    )
-    parser.add_argument(
-        '--animation-fps',
-        type=int,
-        default=20,
-        help='Frames per second for animation'
     )
     parser.add_argument(
         '--quiet', '-q',
@@ -153,8 +144,6 @@ def build_config(args) -> Config:
         config.training.epochs = args.epochs
     if args.lr is not None:
         config.training.lr = args.lr
-    if args.log_every is not None:
-        config.training.log_every = args.log_every
 
     # Override potential config
     if args.potential is not None:
@@ -184,15 +173,21 @@ def main():
     # Build configuration
     config = build_config(args)
 
-    # Create output directory
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    # Initialize run manager and generate run ID
+    run_manager = RunManager("runs")
+    run_id = run_manager.generate_run_id(config, custom_name=args.run_name)
+
+    # Create run directory structure
+    run_dir = run_manager.create_run_dir(run_id)
+    output_dir = run_dir
+    plots_dir = run_dir / "plots"
 
     # Print configuration
     if not args.quiet:
         print("=" * 60)
         print("PINN Schrödinger Solver")
         print("=" * 60)
+        print(f"Run ID: {run_id}")
         print(f"Domain: x=[{config.domain.x_min}, {config.domain.x_max}], "
               f"t=[{config.domain.t_min}, {config.domain.t_max}]")
         print(f"Grid: {config.domain.nx} x {config.domain.nt}")
@@ -228,20 +223,24 @@ def main():
     # Plot initial setup
     if not args.no_plots:
         fig = plot_initial_condition(x, phi_0, potential,
-                                     save_path=output_dir / 'initial_condition.png')
+                                     save_path=plots_dir / 'initial_condition.png')
         plt.close(fig)
-        logger.info(f"Saved initial condition plot to {output_dir / 'initial_condition.png'}")
+        logger.info(f"Saved initial condition plot to {plots_dir / 'initial_condition.png'}")
 
     # Train
     logger.info("Starting training...")
     result = trainer.train(x_t, phi_0, verbose=not args.quiet)
     logger.info("Training complete!")
 
-    # Save model
-    if args.save_model:
-        model_path = output_dir / 'model.pt'
-        model.save(str(model_path))
-        logger.info(f"Saved model to {model_path}")
+    # Save run (model, config, metadata)
+    run_manager.save_run(
+        run_id=run_id,
+        model=model,
+        config=config,
+        result=result,
+        tags=args.tags,
+    )
+    logger.info(f"Saved run to {output_dir}")
 
     # Generate plots
     if not args.no_plots:
@@ -250,10 +249,10 @@ def main():
             result.losses,
             result.loss_components,
             result.epochs_logged,
-            save_path=output_dir / 'loss_curves.png'
+            save_path=plots_dir / 'loss_curves.png'
         )
         plt.close(fig)
-        logger.info(f"Saved loss curves to {output_dir / 'loss_curves.png'}")
+        logger.info(f"Saved loss curves to {plots_dir / 'loss_curves.png'}")
 
         # Probability density
         if result.predictions:
@@ -261,18 +260,18 @@ def main():
             fig = plot_probability_density(
                 x, t, final_pred, phi_0, config.domain,
                 num_snapshots=10,
-                save_path=output_dir / 'probability_density.png'
+                save_path=plots_dir / 'probability_density.png'
             )
             plt.close(fig)
-            logger.info(f"Saved probability density to {output_dir / 'probability_density.png'}")
+            logger.info(f"Saved probability density to {plots_dir / 'probability_density.png'}")
 
             # Boundary check
             fig = plot_boundary_check(
                 t, final_pred, config.domain,
-                save_path=output_dir / 'boundary_check.png'
+                save_path=plots_dir / 'boundary_check.png'
             )
             plt.close(fig)
-            logger.info(f"Saved boundary check to {output_dir / 'boundary_check.png'}")
+            logger.info(f"Saved boundary check to {plots_dir / 'boundary_check.png'}")
 
             # Animation
             if args.animate:
@@ -281,14 +280,14 @@ def main():
                 anim = create_animation(
                     x, t, final_pred, phi_0,
                     domain=config.domain,
-                    num_frames=args.animation_frames,
-                    fps=args.animation_fps,
-                    save_path=output_dir / 'wave_evolution.gif'
+                    num_frames=100,
+                    fps=20,
+                    save_path=plots_dir / 'wave_evolution.gif'
                 )
                 plt.close()
-                logger.info(f"Saved animation to {output_dir / 'wave_evolution.gif'}")
+                logger.info(f"Saved animation to {plots_dir / 'wave_evolution.gif'}")
                 if not args.quiet:
-                    print(f"Animation saved to {output_dir / 'wave_evolution.gif'}")
+                    print(f"Animation saved to {plots_dir / 'wave_evolution.gif'}")
 
     # Print summary
     if not args.quiet:
@@ -296,6 +295,8 @@ def main():
         print("=" * 60)
         print("Training Summary")
         print("=" * 60)
+        print(f"Run ID: {run_id}")
+        print(f"Training time: {result.training_time:.2f}s")
         print(f"Final loss: {result.losses[-1]:.4f}")
         if result.loss_components:
             final_lc = result.loss_components[-1]
@@ -304,6 +305,9 @@ def main():
             print(f"  Boundary cond: {final_lc['boundary']:.4f}")
             print(f"  Normalization: {final_lc['normalization']:.4f}")
         print(f"Output saved to: {output_dir}")
+        print()
+        print("To run inference:")
+        print(f"  python infer.py --run-id {run_id} --plot")
         print("=" * 60)
 
 

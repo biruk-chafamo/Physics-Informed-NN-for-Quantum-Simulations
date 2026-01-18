@@ -31,7 +31,7 @@ potential:
   type: gaussian        # Options: gaussian, harmonic, infinite_well
   amplitude: 10.0       # Potential amplitude
   center: 2.5           # Potential center (x coordinate)
-  sigma: 1.5            # Gaussian width
+  sigma: 0.5            # Gaussian width
   spring_constant: 1.0  # For harmonic potential
   well_left: 0.0        # For infinite well
   well_right: 5.0       # For infinite well

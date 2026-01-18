@@ -100,9 +100,7 @@ def physics_loss(
     Returns:
         Scalar tensor with mean physics loss (excluding boundaries and t=0).
     """
-    # Compute residual: i∂ψ/∂t + (i/2)∂²ψ/∂x²·ψ - V·ψ = 0
-    # TODO: check if phi needs to multiply d_xx
-    residual = torch.abs(1j * d_t + 1j * d_xx * phi / 2 - potential_values * phi)
+    residual = torch.abs(1j * d_t +  d_xx / 2 - potential_values * phi)
 
     # Reshape to (nx, nt) grid and exclude boundaries and initial time
     residual = residual.reshape(domain.nx, domain.nt)
