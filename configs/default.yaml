@@ -1,0 +1,44 @@
+# Default configuration for PINN Schrödinger solver
+
+# Spatial-temporal domain
+domain:
+  nx: 100          # Number of spatial points
+  nt: 100           # Number of temporal points
+  x_min: 0.0        # Left spatial boundary
+  x_max: 5.01       # Right spatial boundary
+  t_min: 0.0        # Initial time
+  t_max: 5.01       # Final time
+
+# Neural network architecture
+model:
+  hidden_dims: [32, 32, 32]  # Hidden layer dimensions
+  activation: leaky_relu      # Activation function
+
+# Training parameters
+training:
+  epochs: 10001           # Number of training epochs
+  lr: 0.001               # Learning rate (Adam optimizer)
+  log_every: 1000         # Log progress every N epochs
+  checkpoint_every: 0     # Checkpoint frequency (0 to disable)
+
+  physics_weight: 15.0        # PDE residual loss weight (α)
+  initial_weight: 10.0        # Initial condition loss weight (β)
+  boundary_weight: 9.0        # Boundary condition loss weight (γ)
+  normalization_weight: 50.0  # Normalization loss weight (δ)
+
+# Potential function
+potential:
+  type: gaussian        # Options: gaussian, harmonic, infinite_well
+  amplitude: 10.0       # Potential amplitude
+  center: 2.5           # Potential center (x coordinate)
+  sigma: 1.5            # Gaussian width
+  spring_constant: 1.0  # For harmonic potential
+  well_left: 0.0        # For infinite well
+  well_right: 5.0       # For infinite well
+
+# Initial wave function (Gaussian wave packet)
+initial_condition:
+  type: gaussian
+  amplitude: 10.0       # Amplitude before normalization
+  center: 2.5           # Center of wave packet
+  sigma: 0.2            # Width of wave packet
