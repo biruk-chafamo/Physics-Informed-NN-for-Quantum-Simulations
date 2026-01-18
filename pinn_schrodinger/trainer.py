@@ -5,6 +5,7 @@ Provides a clean trainer class with logging, checkpointing, and progress trackin
 """
 
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -29,11 +30,17 @@ class TrainingResult:
         loss_components: List of loss component dicts (physics, initial, boundary, norm).
         predictions: List of predicted wave functions at logged epochs.
         epochs_logged: List of epoch numbers where predictions were saved.
+        training_time: Total training time in seconds.
+        start_time: Training start timestamp (ISO format).
+        end_time: Training end timestamp (ISO format).
     """
     losses: List[float] = field(default_factory=list)
     loss_components: List[Dict[str, float]] = field(default_factory=list)
     predictions: List[torch.Tensor] = field(default_factory=list)
     epochs_logged: List[int] = field(default_factory=list)
+    training_time: float = 0.0
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
 
 
 class SchrodingerTrainer:
@@ -114,6 +121,11 @@ class SchrodingerTrainer:
 
         result = TrainingResult()
 
+        # Start timing
+        from datetime import datetime
+        start_time = time.time()
+        result.start_time = datetime.now().isoformat()
+
         for epoch in range(self.training_config.epochs):
             self.optimizer.zero_grad()
 
@@ -167,6 +179,12 @@ class SchrodingerTrainer:
                 checkpoint_path = f"checkpoint_epoch_{epoch}.pt"
                 self.model.save(checkpoint_path)
                 logger.info(f"Saved checkpoint to {checkpoint_path}")
+
+        # End timing
+        from datetime import datetime
+        end_time = time.time()
+        result.training_time = end_time - start_time
+        result.end_time = datetime.now().isoformat()
 
         return result
 

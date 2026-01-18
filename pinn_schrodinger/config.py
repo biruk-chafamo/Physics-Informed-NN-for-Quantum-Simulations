@@ -39,6 +39,22 @@ class DomainConfig:
         """Temporal step size."""
         return (self.t_max - self.t_min) / self.nt
 
+    def to_dict(self) -> dict:
+        """Convert to dictionary."""
+        return {
+            'nx': self.nx,
+            'nt': self.nt,
+            'x_min': self.x_min,
+            'x_max': self.x_max,
+            't_min': self.t_min,
+            't_max': self.t_max,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'DomainConfig':
+        """Create from dictionary."""
+        return cls(**data)
+
 
 @dataclass
 class ModelConfig:
@@ -50,6 +66,18 @@ class ModelConfig:
     """
     hidden_dims: list[int] = field(default_factory=lambda: [32, 32, 32])
     activation: str = "leaky_relu"
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary."""
+        return {
+            'hidden_dims': self.hidden_dims,
+            'activation': self.activation,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'ModelConfig':
+        """Create from dictionary."""
+        return cls(**data)
 
 
 @dataclass
@@ -75,6 +103,24 @@ class TrainingConfig:
     boundary_weight: float = 9.0
     normalization_weight: float = 50.0
 
+    def to_dict(self) -> dict:
+        """Convert to dictionary."""
+        return {
+            'epochs': self.epochs,
+            'lr': self.lr,
+            'log_every': self.log_every,
+            'checkpoint_every': self.checkpoint_every,
+            'physics_weight': self.physics_weight,
+            'initial_weight': self.initial_weight,
+            'boundary_weight': self.boundary_weight,
+            'normalization_weight': self.normalization_weight,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'TrainingConfig':
+        """Create from dictionary."""
+        return cls(**data)
+
 
 @dataclass
 class PotentialConfig:
@@ -99,6 +145,23 @@ class PotentialConfig:
     well_right: float = 5.0
     custom_fn: Optional[Callable] = None
 
+    def to_dict(self) -> dict:
+        """Convert to dictionary (excludes custom_fn which can't be serialized)."""
+        return {
+            'type': self.type,
+            'amplitude': self.amplitude,
+            'center': self.center,
+            'sigma': self.sigma,
+            'spring_constant': self.spring_constant,
+            'well_left': self.well_left,
+            'well_right': self.well_right,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'PotentialConfig':
+        """Create from dictionary."""
+        return cls(**{k: v for k, v in data.items() if k != 'custom_fn'})
+
 
 @dataclass
 class InitialConditionConfig:
@@ -114,6 +177,20 @@ class InitialConditionConfig:
     amplitude: float = 10.0
     center: float = 2.5
     sigma: float = 0.2
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary."""
+        return {
+            'type': self.type,
+            'amplitude': self.amplitude,
+            'center': self.center,
+            'sigma': self.sigma,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'InitialConditionConfig':
+        """Create from dictionary."""
+        return cls(**data)
 
 
 @dataclass
@@ -132,6 +209,36 @@ class Config:
     training: TrainingConfig = field(default_factory=TrainingConfig)
     potential: PotentialConfig = field(default_factory=PotentialConfig)
     initial_condition: InitialConditionConfig = field(default_factory=InitialConditionConfig)
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary."""
+        return {
+            'domain': self.domain.to_dict(),
+            'model': self.model.to_dict(),
+            'training': self.training.to_dict(),
+            'potential': self.potential.to_dict(),
+            'initial_condition': self.initial_condition.to_dict(),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'Config':
+        """Create from dictionary."""
+        return cls(
+            domain=DomainConfig.from_dict(data.get('domain', {})),
+            model=ModelConfig.from_dict(data.get('model', {})),
+            training=TrainingConfig.from_dict(data.get('training', {})),
+            potential=PotentialConfig.from_dict(data.get('potential', {})),
+            initial_condition=InitialConditionConfig.from_dict(data.get('initial_condition', {})),
+        )
+
+    def save_yaml(self, path: str) -> None:
+        """Save configuration to a YAML file.
+
+        Args:
+            path: Path to save the YAML file.
+        """
+        with open(path, 'w') as f:
+            yaml.dump(self.to_dict(), f, default_flow_style=False, sort_keys=False)
 
 
 def load_config(yaml_path: str) -> Config:

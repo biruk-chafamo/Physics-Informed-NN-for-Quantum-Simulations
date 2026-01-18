@@ -10,7 +10,7 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
-from .config import ModelConfig
+from .config import ModelConfig, Config
 
 
 def get_activation(name: str) -> nn.Module:
@@ -99,16 +99,20 @@ class SchrodingerPINN(nn.Module):
         phi_rc = self.forward(x_t)
         return phi_rc[:, 0] + 1j * phi_rc[:, 1]
 
-    def save(self, path: str) -> None:
+    def save(self, path: str, full_config: Optional[Config] = None) -> None:
         """Save model state to file.
 
         Args:
             path: File path to save the model checkpoint.
+            full_config: Optional full Config object to save alongside model.
         """
-        torch.save({
+        checkpoint = {
             'model_state_dict': self.state_dict(),
             'config': self.config,
-        }, path)
+        }
+        if full_config is not None:
+            checkpoint['full_config'] = full_config.to_dict()
+        torch.save(checkpoint, path)
 
     @classmethod
     def load(cls, path: str, device: Optional[torch.device] = None) -> 'SchrodingerPINN':
@@ -122,13 +126,37 @@ class SchrodingerPINN(nn.Module):
             Loaded SchrodingerPINN model.
         """
         device = device or torch.device('cpu')
-        checkpoint = torch.load(path, map_location=device)
+        checkpoint = torch.load(path, map_location=device, weights_only=False)
 
         model = cls(config=checkpoint['config'])
         model.load_state_dict(checkpoint['model_state_dict'])
         model.to(device)
 
         return model
+
+    @classmethod
+    def load_with_config(cls, path: str, device: Optional[torch.device] = None) -> tuple['SchrodingerPINN', Optional[Config]]:
+        """Load model and full config from checkpoint file.
+
+        Args:
+            path: File path to the model checkpoint.
+            device: Device to load the model onto. If None, uses CPU.
+
+        Returns:
+            Tuple of (loaded model, full Config or None if not saved).
+        """
+        device = device or torch.device('cpu')
+        checkpoint = torch.load(path, map_location=device, weights_only=False)
+
+        model = cls(config=checkpoint['config'])
+        model.load_state_dict(checkpoint['model_state_dict'])
+        model.to(device)
+
+        full_config = None
+        if 'full_config' in checkpoint:
+            full_config = Config.from_dict(checkpoint['full_config'])
+
+        return model, full_config
 
     def count_parameters(self) -> int:
         """Count total number of trainable parameters.
