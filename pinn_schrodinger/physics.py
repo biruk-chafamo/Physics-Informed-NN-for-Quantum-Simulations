@@ -98,13 +98,13 @@ def physics_loss(
         domain: Domain configuration for reshaping.
 
     Returns:
-        Scalar tensor with mean physics loss (excluding boundaries and t=0).
+        Scalar tensor with mean physics loss (excluding boundaries).
     """
-    residual = torch.abs(1j * d_t +  d_xx / 2 - potential_values * phi)
+    residual = torch.abs(1j * d_t + d_xx / 2 - potential_values * phi)
 
-    # Reshape to (nx, nt) grid and exclude boundaries and initial time
+    # Reshape to (nx, nt) grid and exclude boundaries
     residual = residual.reshape(domain.nx, domain.nt)
-    residual = residual[1:-1, 1:]  # Exclude x boundaries and t=0
+    residual = residual[1:-1, :]  # Exclude x boundaries only, keep t=0
 
     return torch.mean(residual.reshape(-1))
 
@@ -258,7 +258,9 @@ def create_initial_condition(
         Normalized initial wave function of shape (nx,).
     """
     with torch.no_grad():
-        phi_0 = amplitude * torch.exp(-((x - center) ** 2) / (2 * sigma ** 2))
+        phi_0_r = amplitude * torch.exp(-((x - center) ** 2) / (2 * sigma ** 2))
+        phi_0_c = 1j * amplitude * torch.exp(-((x - center + 0.1) ** 2) / (2 * sigma ** 2))
+        phi_0 = phi_0_r + phi_0_c
         norm = torch.sum(torch.abs(phi_0) ** 2 * dx)
         phi_0 = phi_0 / torch.sqrt(norm)
     return phi_0

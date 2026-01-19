@@ -282,11 +282,174 @@ def plot_physics_residual(
     return fig
 
 
+def plot_summary(
+    x: torch.Tensor,
+    t: torch.Tensor,
+    phi_pred: torch.Tensor,
+    phi_0: torch.Tensor,
+    potential: BasePotential,
+    domain: DomainConfig,
+    losses: List[float],
+    loss_components: List[dict],
+    epochs_logged: List[int],
+    save_path: Optional[str] = None
+) -> plt.Figure:
+    """Create a comprehensive summary figure for physics debugging.
+
+    5-panel layout:
+    - (A) Setup: |ψ₀|² + V(x) overlaid
+    - (B) Real/Imaginary components at 3 time slices
+    - (C) Loss curves (all components)
+    - (D) Normalization over time
+    - (E) Boundary behavior
+
+    Args:
+        x: Spatial coordinates of shape (nx,).
+        t: Temporal coordinates of shape (nt,).
+        phi_pred: Predicted wave function of shape (nx*nt,) or (nx, nt).
+        phi_0: Initial wave function of shape (nx,).
+        potential: Potential function.
+        domain: Domain configuration.
+        losses: Total loss per epoch.
+        loss_components: List of loss component dicts.
+        epochs_logged: Epochs where loss_components were recorded.
+        save_path: If provided, saves figure to this path.
+
+    Returns:
+        Matplotlib Figure object.
+    """
+    x_np = x.detach().numpy()
+    t_np = t.detach().numpy()
+    phi_0_np = phi_0.detach().numpy()
+
+    nx, nt = domain.nx, domain.nt
+
+    if torch.is_complex(phi_pred):
+        phi_np = phi_pred.detach().numpy()
+    else:
+        phi_np = phi_pred.detach().numpy()
+
+    phi_grid = phi_np.reshape(nx, nt)
+
+    with torch.no_grad():
+        v_np = potential(x).detach().numpy()
+
+    # Create figure with custom layout: 1 wide panel on top, 2x2 below
+    fig = plt.figure(figsize=(14, 12))
+    gs = fig.add_gridspec(3, 2, height_ratios=[1, 1, 1], hspace=0.3, wspace=0.25)
+
+    # (A) Setup Overview - wide panel spanning both columns
+    ax_setup = fig.add_subplot(gs[0, :])
+    ax_setup_v = ax_setup.twinx()
+
+    prob_0 = np.abs(phi_0_np) ** 2
+    ax_setup.plot(x_np, prob_0, 'b-', linewidth=2, label=r'$|\psi_0|^2$')
+    ax_setup.set_xlabel('x')
+    ax_setup.set_ylabel(r'$|\psi_0|^2$', color='blue')
+    ax_setup.tick_params(axis='y', labelcolor='blue')
+
+    ax_setup.plot(x_np, np.real(phi_0_np), color="black", linestyle='-',
+                    linewidth=1.5, label=r'$Re(\psi_0)$')
+    ax_setup.plot(x_np, np.imag(phi_0_np), color="green", linestyle='--',
+                    linewidth=1.5, label='$Re(\psi_0)$')
+    
+    ax_setup_v.plot(x_np, v_np, 'r--', linewidth=2, label='V(x)')
+    ax_setup_v.set_ylabel('V(x)', color='red')
+    ax_setup_v.tick_params(axis='y', labelcolor='red')
+
+    ax_setup.set_title('(A) Setup: Initial Condition and Potential')
+    lines1, labels1 = ax_setup.get_legend_handles_labels()
+    lines2, labels2 = ax_setup_v.get_legend_handles_labels()
+    ax_setup.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
+    ax_setup.grid(True, alpha=0.3)
+
+    # (B) Real/Imaginary Components at 3 time slices
+    ax_reim = fig.add_subplot(gs[1, 0])
+
+    time_indices = [0, nt // 2, nt - 1]
+    colors = ['blue', 'green', 'red']
+    for idx, t_idx in enumerate(time_indices):
+        psi_slice = phi_grid[:, t_idx]
+        re_psi = np.real(psi_slice)
+        im_psi = np.imag(psi_slice)
+        t_val = t_np[t_idx]
+
+        ax_reim.plot(x_np, re_psi, color=colors[idx], linestyle='-',
+                     linewidth=1.5, label=f'Re(ψ) t={t_val:.2f}')
+        ax_reim.plot(x_np, im_psi, color=colors[idx], linestyle='--',
+                     linewidth=1.5, label=f'Im(ψ) t={t_val:.2f}')
+
+    ax_reim.set_xlabel('x')
+    ax_reim.set_ylabel('ψ')
+    ax_reim.set_title('(B) Real/Imaginary Components')
+    ax_reim.legend(loc='upper right', fontsize=7, ncol=2)
+    ax_reim.grid(True, alpha=0.3)
+
+    # (C) Loss Curves
+    ax_loss = fig.add_subplot(gs[1, 1])
+
+    if loss_components and epochs_logged:
+        physics = [lc['physics'] for lc in loss_components]
+        initial = [lc['initial'] for lc in loss_components]
+        boundary = [lc['boundary'] for lc in loss_components]
+        norm = [lc['normalization'] for lc in loss_components]
+
+        ax_loss.plot(epochs_logged, physics, 'r-', label='Physics', linewidth=1.5)
+        ax_loss.plot(epochs_logged, initial, 'g-', label='Initial', linewidth=1.5)
+        ax_loss.plot(epochs_logged, boundary, 'b-', label='Boundary', linewidth=1.5)
+        ax_loss.plot(epochs_logged, norm, 'm-', label='Norm', linewidth=1.5)
+        ax_loss.set_yscale('log')
+        ax_loss.legend(loc='upper right', fontsize=8)
+
+    ax_loss.set_xlabel('Epoch')
+    ax_loss.set_ylabel('Loss (weighted)')
+    ax_loss.set_title('(C) Loss Components')
+    ax_loss.grid(True, alpha=0.3)
+
+    # (D) Normalization Over Time
+    ax_norm = fig.add_subplot(gs[2, 0])
+
+    prob_density = np.abs(phi_grid) ** 2
+    norms = np.sum(prob_density * domain.dx, axis=0)
+
+    ax_norm.plot(t_np, norms, 'b-', linewidth=1.5)
+    ax_norm.axhline(y=1.0, color='r', linestyle='--', linewidth=1, label='Target = 1')
+    ax_norm.set_xlabel('t')
+    ax_norm.set_ylabel(r'$\int |\psi|^2 dx$')
+    ax_norm.set_title('(D) Normalization Over Time')
+    ax_norm.legend(loc='upper right')
+    ax_norm.grid(True, alpha=0.3)
+
+    # (E) Boundary Check
+    ax_bc = fig.add_subplot(gs[2, 1])
+
+    ax_bc.plot(t_np, prob_density[0, :], 'b-', linewidth=1.5,
+               label=f'x={domain.x_min:.1f} (left)')
+    ax_bc.plot(t_np, prob_density[-1, :], 'r-', linewidth=1.5,
+               label=f'x={domain.x_max:.1f} (right)')
+    ax_bc.plot(t_np, prob_density[nx // 2, :], 'g--', linewidth=1.5,
+               label=f'x={x_np[nx // 2]:.1f} (center)')
+
+    ax_bc.set_xlabel('t')
+    ax_bc.set_ylabel(r'$|\psi|^2$')
+    ax_bc.set_title('(E) Boundary Check')
+    ax_bc.legend(loc='upper right', fontsize=8)
+    ax_bc.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+
+    return fig
+
+
 def create_animation(
     x: torch.Tensor,
     t: torch.Tensor,
     phi_pred: torch.Tensor,
     phi_0: Optional[torch.Tensor] = None,
+    potential: Optional[BasePotential] = None,
     domain: Optional[DomainConfig] = None,
     num_frames: int = 100,
     save_path: Optional[Union[str, Path]] = None,
@@ -354,10 +517,12 @@ def create_animation(
     # Plot initial condition as static reference
     if phi_0_density is not None:
         ax.plot(x_np, phi_0_density, label=r'$|\psi_0|^2$ (initial)',
-                linestyle='--', color='blue', linewidth=2, zorder=10)
+                linestyle='--', color='blue', linewidth=0.5, zorder=10)
 
+    if potential is not None:
+        ax.plot(x_np, potential(x).detach().numpy(), label="V(x)", color="red")
     # Initialize the animated line
-    line, = ax.plot([], [], linestyle='-', linewidth=2, color='red',
+    line, = ax.plot([], [], linestyle='-', linewidth=2, color='blue',
                     label=r'$|\psi(x,t)|^2$')
 
     # Configure axes

@@ -17,7 +17,7 @@ def get_activation(name: str) -> nn.Module:
     """Get activation function by name.
 
     Args:
-        name: Activation function name ('leaky_relu', 'relu', 'tanh', 'silu').
+        name: Activation function name ('tanh', 'silu').
 
     Returns:
         PyTorch activation module.
@@ -26,8 +26,6 @@ def get_activation(name: str) -> nn.Module:
         ValueError: If activation name is not recognized.
     """
     activations = {
-        "leaky_relu": nn.LeakyReLU(),
-        "relu": nn.ReLU(),
         "tanh": nn.Tanh(),
         "silu": nn.SiLU(),
         "gelu": nn.GELU(),
