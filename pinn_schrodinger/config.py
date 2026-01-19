@@ -62,10 +62,13 @@ class ModelConfig:
 
     Attributes:
         hidden_dims: List of hidden layer dimensions.
-        activation: Activation function name ('leaky_relu', 'relu', 'tanh', 'silu').
+        activation: Activation function name ('tanh', 'silu').
+    Note:
+        the piecewise linear form of ReLU makes it unsuitable for 
+        second-order diff eqs. See https://arxiv.org/html/2512.11184v2
     """
     hidden_dims: list[int] = field(default_factory=lambda: [32, 32, 32])
-    activation: str = "leaky_relu"
+    activation: str = "tanh"
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""

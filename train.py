@@ -29,6 +29,7 @@ from pinn_schrodinger.visualization import (
     plot_probability_density,
     plot_loss_curves,
     plot_boundary_check,
+    plot_summary,
     create_animation,
 )
 
@@ -64,7 +65,7 @@ def parse_args():
     parser.add_argument(
         '--activation',
         type=str,
-        choices=['leaky_relu', 'relu', 'tanh', 'silu', 'gelu'],
+        choices=['tanh', 'silu', 'gelu'],
         help='Activation function'
     )
 
@@ -273,12 +274,22 @@ def main():
             plt.close(fig)
             logger.info(f"Saved boundary check to {plots_dir / 'boundary_check.png'}")
 
+            # Summary figure
+            fig = plot_summary(
+                x, t, final_pred, phi_0, potential, config.domain,
+                result.losses, result.loss_components, result.epochs_logged,
+                save_path=plots_dir / 'summary.png'
+            )
+            plt.close(fig)
+            logger.info(f"Saved summary to {plots_dir / 'summary.png'}")
+
             # Animation
             if args.animate:
                 if not args.quiet:
                     print("Creating animation...")
                 anim = create_animation(
                     x, t, final_pred, phi_0,
+                    potential=potential,
                     domain=config.domain,
                     num_frames=100,
                     fps=20,

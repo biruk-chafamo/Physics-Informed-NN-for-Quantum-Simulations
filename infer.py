@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 import torch
 
 from pinn_schrodinger.inference import PINNPredictor
+from pinn_schrodinger.potentials import create_potential_from_config
 from pinn_schrodinger.visualization import (
     plot_probability_density,
     create_animation,
@@ -271,6 +272,9 @@ def main():
             psi_grid = result.psi.reshape(len(result.x), len(result.t))
             phi_0 = psi_grid[:, 0]
 
+            # Reconstruct the potential from saved config
+            potential = create_potential_from_config(predictor.config.potential)
+
             save_path = 'inference_animation.gif'
 
             anim = create_animation(
@@ -278,6 +282,7 @@ def main():
                 result.t,
                 result.psi,
                 phi_0,
+                potential=potential,
                 domain=plot_domain,
                 num_frames=100,
                 fps=20,
