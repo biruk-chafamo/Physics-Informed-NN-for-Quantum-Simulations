@@ -75,7 +75,7 @@ See `configs/default.yaml` for the full configuration with documentation.
 
 ## Takeaways
 
-1. **Loss Weights**: The convergence of the PINN to a sensible solution is dependent on how each component of the loss is weighted. For example, if the physics loss is weighed too highly, then the network can converge to a constant flat line, which is a correct solution to the PDE had the initial wave packet also been a constant flat line. In this case, the network is ignoring the initial condition component of the loss. Unfortunately, finding the right set of weights requires some trial and error.
+1. **Loss Weights**: The convergence of the PINN to a sensible solution is dependent on how each component of the loss is weighted. For example, if the physics loss is weighed too highly, then the network can converge to a constant flat line, which is a correct solution to the PDE had the initial wave packet also been a constant flat line. In this case, the network is ignoring the initial condition component of the loss. Unfortunately, finding the right set of weights requires some trial and error. Ahe adaptive relative loss weights will help with this, see above.
 
 2. **Activation function**: The activation function being used is also very important to reach a correct solution. A stepwise-linear activation function like the ReLu has a zero second-order derivative. This makes it a poor choice to learn a system like Schrodinger's equation, which involves taking a second-order derivative of the network's output. See Rowan, C. (2025).
 
