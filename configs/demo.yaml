@@ -26,10 +26,18 @@ training:
   boundary_weight: 9.0        # Boundary condition loss weight (γ)
   normalization_weight: 90.0  # Normalization loss weight (δ)
 
+  # Adaptive weight scheduling (Learning Rate Annealing)
+  adaptive_weights:
+    enabled: false            # Enable adaptive loss weighting
+    method: lra               # Method: 'lra' (Learning Rate Annealing)
+    tau: 0.9                  # Momentum parameter (0 < tau <= 1)
+    update_freq: 100          # Update weights every N epochs
+    min_weight: 0.1           # Minimum allowed weight
+    max_weight: 100.0         # Maximum allowed weight
 # Potential function
 potential:
   type: harmonic        # Options: gaussian, harmonic, infinite_well
-  amplitude: 10.0       # Potential amplitude
+  amplitude: 2.0       # Potential amplitude
   center: 2.5           # Potential center (x coordinate)
   sigma: 0.5            # Gaussian width
   spring_constant: 3.0  # For harmonic potential

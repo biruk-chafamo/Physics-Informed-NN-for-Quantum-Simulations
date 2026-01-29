@@ -84,6 +84,46 @@ class ModelConfig:
 
 
 @dataclass
+class AdaptiveWeightConfig:
+    """Configuration for adaptive loss weight scheduling.
+
+    Based on Learning Rate Annealing (LRA) from Wang, Teng & Perdikaris (2021).
+    Weights are adjusted so all loss terms contribute equally to parameter updates
+    by normalizing gradient magnitudes.
+
+    Attributes:
+        enabled: Whether to use adaptive weight scheduling.
+        method: Scheduling method (currently only 'lra' is supported).
+        tau: Momentum parameter for weight updates (0 < tau <= 1).
+        update_freq: How often to update weights (in epochs).
+        min_weight: Minimum allowed weight value.
+        max_weight: Maximum allowed weight value.
+    """
+    enabled: bool = False
+    method: str = "lra"
+    tau: float = 0.9
+    update_freq: int = 100
+    min_weight: float = 0.1
+    max_weight: float = 100.0
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary."""
+        return {
+            'enabled': self.enabled,
+            'method': self.method,
+            'tau': self.tau,
+            'update_freq': self.update_freq,
+            'min_weight': self.min_weight,
+            'max_weight': self.max_weight,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'AdaptiveWeightConfig':
+        """Create from dictionary."""
+        return cls(**data)
+
+
+@dataclass
 class TrainingConfig:
     """Configuration for the training process.
 
@@ -96,6 +136,7 @@ class TrainingConfig:
         initial_weight: Weight for initial condition loss term (β).
         boundary_weight: Weight for boundary condition loss term (γ).
         normalization_weight: Weight for normalization loss term (δ).
+        adaptive_weights: Configuration for adaptive weight scheduling.
     """
     epochs: int = 10001
     lr: float = 1e-3
@@ -105,10 +146,11 @@ class TrainingConfig:
     initial_weight: float = 10.0
     boundary_weight: float = 9.0
     normalization_weight: float = 50.0
+    adaptive_weights: Optional[AdaptiveWeightConfig] = None
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
-        return {
+        result = {
             'epochs': self.epochs,
             'lr': self.lr,
             'log_every': self.log_every,
@@ -118,11 +160,18 @@ class TrainingConfig:
             'boundary_weight': self.boundary_weight,
             'normalization_weight': self.normalization_weight,
         }
+        if self.adaptive_weights is not None:
+            result['adaptive_weights'] = self.adaptive_weights.to_dict()
+        return result
 
     @classmethod
     def from_dict(cls, data: dict) -> 'TrainingConfig':
         """Create from dictionary."""
-        return cls(**data)
+        adaptive_weights_data = data.pop('adaptive_weights', None)
+        config = cls(**data)
+        if adaptive_weights_data is not None:
+            config.adaptive_weights = AdaptiveWeightConfig.from_dict(adaptive_weights_data)
+        return config
 
 
 @dataclass
@@ -265,7 +314,11 @@ def load_config(yaml_path: str) -> Config:
         config.model = ModelConfig(**data['model'])
 
     if 'training' in data:
-        config.training = TrainingConfig(**data['training'])
+        training_data = data['training'].copy()
+        adaptive_weights_data = training_data.pop('adaptive_weights', None)
+        config.training = TrainingConfig(**training_data)
+        if adaptive_weights_data is not None:
+            config.training.adaptive_weights = AdaptiveWeightConfig(**adaptive_weights_data)
 
     if 'potential' in data:
         config.potential = PotentialConfig(**{

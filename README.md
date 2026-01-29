@@ -24,6 +24,10 @@ The network takes coordinates (x, t) and outputs the real and imaginary parts of
 
 By minimizing this combined loss, the network learns a wave function that satisfies both the physics and the constraints.
 
+### Adaptive Loss Weights
+
+Finding the right balance of loss weights is challenging: if one term dominates, the network may converge to a trivial solution that ignores other constraints. This project supports Learning Rate Annealing (LRA) from Wang, Teng & Perdikaris (2021), which dynamically adjusts weights based on gradient magnitudes so all loss terms contribute equally to parameter updates.
+
 ## Usage
 
 ```bash
@@ -38,6 +42,10 @@ python train.py --potential harmonic
 
 # Create an animation of the wave evolution
 python train.py --animate
+
+# Enable adaptive loss weights (LRA)
+python train.py --adaptive-weights
+python train.py --adaptive-weights --lra-tau 0.8 --lra-update-freq 50
 
 # Run inference on a trained model
 python infer.py --run-id <run_id>
@@ -59,7 +67,7 @@ Key parameters can be set via command line or in `configs/default.yaml`. Use the
 
 **Network**: Hidden layer dimensions, activation function (tanh, silu, gelu)
 
-**Training**: Learning rate, number of epochs, loss term weights
+**Training**: Learning rate, number of epochs, loss term weights, adaptive weight scheduling
 
 **Domain**: Spatial and temporal bounds, grid resolution
 
@@ -77,3 +85,4 @@ See `configs/default.yaml` for the full configuration with documentation.
 
 - Rathore, P., Lei, W., Frangella, Z., Lu, L., & Udell, M. (2024). Challenges in training pinns: A loss landscape perspective. arXiv preprint arXiv:2402.01868. [https://arxiv.org/pdf/2402.01868](https://arxiv.org/pdf/2402.01868)
 - Rowan, C. (2025). On the failure of ReLU activation for physics-informed machine learning. arXiv preprint arXiv:2512.11184. [https://arxiv.org/pdf/2512.11184](https://arxiv.org/pdf/2512.11184)
+- Wang, S., Teng, Y., & Perdikaris, P. (2021). Understanding and mitigating gradient flow pathologies in physics-informed neural networks. SIAM Journal on Scientific Computing, 43(5), A3055-A3081. [https://arxiv.org/abs/2001.04536](https://arxiv.org/abs/2001.04536)

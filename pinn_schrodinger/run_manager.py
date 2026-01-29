@@ -139,6 +139,10 @@ class RunManager:
             },
         }
 
+        # Add weight history if adaptive weights were used
+        if result.weight_history:
+            metadata["weight_history"] = result.weight_history
+
         # Save metadata
         metadata_path = run_dir / "metadata.json"
         with open(metadata_path, "w") as f:
