@@ -18,7 +18,7 @@ from pathlib import Path
 import torch
 import matplotlib.pyplot as plt
 
-from pinn_schrodinger.config import Config, load_config
+from pinn_schrodinger.config import Config, load_config, AdaptiveWeightConfig
 from pinn_schrodinger.model import SchrodingerPINN
 from pinn_schrodinger.potentials import create_potential_from_config
 from pinn_schrodinger.physics import create_grid, create_initial_condition
@@ -72,6 +72,25 @@ def parse_args():
     # Training parameters
     parser.add_argument('--epochs', '-e', type=int, help='Number of training epochs')
     parser.add_argument('--lr', type=float, help='Learning rate')
+
+    # Adaptive weight scheduling
+    parser.add_argument(
+        '--adaptive-weights',
+        action='store_true',
+        help='Enable adaptive loss weight scheduling (LRA)'
+    )
+    parser.add_argument(
+        '--lra-tau',
+        type=float,
+        default=None,
+        help='LRA momentum parameter (0 < tau <= 1)'
+    )
+    parser.add_argument(
+        '--lra-update-freq',
+        type=int,
+        default=None,
+        help='LRA weight update frequency (epochs)'
+    )
 
     # Potential parameters
     parser.add_argument(
@@ -146,6 +165,20 @@ def build_config(args) -> Config:
     if args.lr is not None:
         config.training.lr = args.lr
 
+    # Override adaptive weight config
+    if args.adaptive_weights:
+        if config.training.adaptive_weights is None:
+            config.training.adaptive_weights = AdaptiveWeightConfig()
+        config.training.adaptive_weights.enabled = True
+    if args.lra_tau is not None:
+        if config.training.adaptive_weights is None:
+            config.training.adaptive_weights = AdaptiveWeightConfig()
+        config.training.adaptive_weights.tau = args.lra_tau
+    if args.lra_update_freq is not None:
+        if config.training.adaptive_weights is None:
+            config.training.adaptive_weights = AdaptiveWeightConfig()
+        config.training.adaptive_weights.update_freq = args.lra_update_freq
+
     # Override potential config
     if args.potential is not None:
         config.potential.type = args.potential
@@ -195,6 +228,10 @@ def main():
         print(f"Model: hidden_dims={config.model.hidden_dims}, "
               f"activation={config.model.activation}")
         print(f"Training: epochs={config.training.epochs}, lr={config.training.lr}")
+        if (config.training.adaptive_weights is not None and
+            config.training.adaptive_weights.enabled):
+            aw = config.training.adaptive_weights
+            print(f"Adaptive weights: LRA (tau={aw.tau}, update_freq={aw.update_freq})")
         print(f"Potential: {config.potential.type}")
         print(f"Output: {output_dir}")
         print("=" * 60)

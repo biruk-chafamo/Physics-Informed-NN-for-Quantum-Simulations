@@ -12,9 +12,19 @@ from typing import Dict, List, Optional
 import torch
 from torch.optim import Adam
 
+from .adaptive_weights import LRAWeightScheduler
 from .config import Config, DomainConfig, TrainingConfig
 from .model import SchrodingerPINN
-from .physics import compute_derivatives, total_loss, create_grid, create_initial_condition
+from .physics import (
+    compute_derivatives,
+    total_loss,
+    create_grid,
+    create_initial_condition,
+    physics_loss,
+    initial_condition_loss,
+    boundary_condition_loss,
+    normalization_loss,
+)
 from .potentials import BasePotential
 
 
@@ -33,6 +43,7 @@ class TrainingResult:
         training_time: Total training time in seconds.
         start_time: Training start timestamp (ISO format).
         end_time: Training end timestamp (ISO format).
+        weight_history: History of adaptive weight updates (if enabled).
     """
     losses: List[float] = field(default_factory=list)
     loss_components: List[Dict[str, float]] = field(default_factory=list)
@@ -41,6 +52,7 @@ class TrainingResult:
     training_time: float = 0.0
     start_time: Optional[str] = None
     end_time: Optional[str] = None
+    weight_history: List[Dict[str, float]] = field(default_factory=list)
 
 
 class SchrodingerTrainer:
@@ -81,6 +93,26 @@ class SchrodingerTrainer:
             lr=self.training_config.lr,
             amsgrad=True
         )
+
+        # Initialize adaptive weight scheduler if enabled
+        self.weight_scheduler: Optional[LRAWeightScheduler] = None
+        if (self.training_config.adaptive_weights is not None and
+            self.training_config.adaptive_weights.enabled):
+            aw_config = self.training_config.adaptive_weights
+            initial_weights = {
+                'physics': self.training_config.physics_weight,
+                'initial': self.training_config.initial_weight,
+                'boundary': self.training_config.boundary_weight,
+                'normalization': self.training_config.normalization_weight,
+            }
+            self.weight_scheduler = LRAWeightScheduler(
+                loss_names=['physics', 'initial', 'boundary', 'normalization'],
+                tau=aw_config.tau,
+                update_freq=aw_config.update_freq,
+                min_weight=aw_config.min_weight,
+                max_weight=aw_config.max_weight,
+                initial_weights=initial_weights,
+            )
 
     def train(
         self,
@@ -126,6 +158,14 @@ class SchrodingerTrainer:
         start_time = time.time()
         result.start_time = datetime.now().isoformat()
 
+        # Get initial weights (may be updated by scheduler)
+        current_weights = {
+            'physics': self.training_config.physics_weight,
+            'initial': self.training_config.initial_weight,
+            'boundary': self.training_config.boundary_weight,
+            'normalization': self.training_config.normalization_weight,
+        }
+
         for epoch in range(self.training_config.epochs):
             self.optimizer.zero_grad()
 
@@ -137,16 +177,58 @@ class SchrodingerTrainer:
             # Compute derivatives
             d_t, d_xx = compute_derivatives(phi_pred_rc, x_t)
 
-            # Compute loss
-            should_log = epoch % self.training_config.log_every == 0
-            loss, loss_dict = total_loss(
-                phi_pred, d_t, d_xx, v, phi_0, self.domain,
-                physics_weight=self.training_config.physics_weight,
-                initial_weight=self.training_config.initial_weight,
-                boundary_weight=self.training_config.boundary_weight,
-                normalization_weight=self.training_config.normalization_weight,
-                return_components=True
-            )
+            # Compute individual unweighted losses for adaptive weighting
+            if self.weight_scheduler is not None:
+                l_physics = physics_loss(phi_pred, d_t, d_xx, v, self.domain)
+                l_initial = initial_condition_loss(phi_pred, phi_0, self.domain)
+                l_boundary = boundary_condition_loss(phi_pred, self.domain)
+                l_norm = normalization_loss(phi_pred, self.domain)
+
+                unweighted_losses = {
+                    'physics': l_physics,
+                    'initial': l_initial,
+                    'boundary': l_boundary,
+                    'normalization': l_norm,
+                }
+
+                # Update weights if needed
+                weights_updated = self.weight_scheduler.update(
+                    epoch, self.model, unweighted_losses
+                )
+                if weights_updated:
+                    current_weights = self.weight_scheduler.get_weights()
+                    if verbose:
+                        print(f"[LRA] Weights updated at epoch {epoch}:")
+                        for name, weight in current_weights.items():
+                            print(f"  {name}: {weight:.4f}")
+                        print()
+
+                # Compute weighted total loss
+                loss = (
+                    current_weights['physics'] * l_physics +
+                    current_weights['initial'] * l_initial +
+                    current_weights['boundary'] * l_boundary +
+                    current_weights['normalization'] * l_norm
+                )
+
+                loss_dict = {
+                    'physics': current_weights['physics'] * l_physics.item(),
+                    'initial': current_weights['initial'] * l_initial.item(),
+                    'boundary': current_weights['boundary'] * l_boundary.item(),
+                    'normalization': current_weights['normalization'] * l_norm.item(),
+                    'total': loss.item(),
+                }
+            else:
+                # Standard fixed weights
+                should_log = epoch % self.training_config.log_every == 0
+                loss, loss_dict = total_loss(
+                    phi_pred, d_t, d_xx, v, phi_0, self.domain,
+                    physics_weight=current_weights['physics'],
+                    initial_weight=current_weights['initial'],
+                    boundary_weight=current_weights['boundary'],
+                    normalization_weight=current_weights['normalization'],
+                    return_components=True
+                )
 
             # Backward pass
             loss.backward()
@@ -156,6 +238,7 @@ class SchrodingerTrainer:
             result.losses.append(loss.item())
 
             # Log progress
+            should_log = epoch % self.training_config.log_every == 0
             if should_log:
                 result.loss_components.append(loss_dict)
                 result.predictions.append(phi_pred.detach().clone())
@@ -185,6 +268,10 @@ class SchrodingerTrainer:
         end_time = time.time()
         result.training_time = end_time - start_time
         result.end_time = datetime.now().isoformat()
+
+        # Record weight history if using adaptive weights
+        if self.weight_scheduler is not None:
+            result.weight_history = self.weight_scheduler.get_weight_history()
 
         return result
 

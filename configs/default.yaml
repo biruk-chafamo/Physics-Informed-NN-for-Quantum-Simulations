@@ -24,7 +24,16 @@ training:
   physics_weight: 15.0        # PDE residual loss weight (α)
   initial_weight: 10.0        # Initial condition loss weight (β)
   boundary_weight: 9.0        # Boundary condition loss weight (γ)
-  normalization_weight: 50.0  # Normalization loss weight (δ)
+  normalization_weight: 100.0  # Normalization loss weight (δ)
+
+  # Adaptive weight scheduling (Learning Rate Annealing)
+  adaptive_weights:
+    enabled: false            # Enable adaptive loss weighting
+    method: lra               # Method: 'lra' (Learning Rate Annealing)
+    tau: 0.9                  # Momentum parameter (0 < tau <= 1)
+    update_freq: 100          # Update weights every N epochs
+    min_weight: 0.1           # Minimum allowed weight
+    max_weight: 100.0         # Maximum allowed weight
 
 # Potential function
 potential:
